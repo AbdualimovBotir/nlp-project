@@ -7,48 +7,51 @@ from nltk.stem.porter import PorterStemmer
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 app = Flask(__name__)
-
-# Load model and vectorizer from pickle files
 model = pickle.load(open('model.pkl', 'rb'))
-tfidf_vectorizer = pickle.load(open('tfidf_vectorizer.pkl', 'rb'))  # Load your trained vectorizer
 
-# Pre-load stopwords and stemmer for better performance
-stop_words = set(stopwords.words('english'))
-ps = PorterStemmer()
-
+# TfidfVectorizer'ni yuklash yoki yaratish
+try:
+    tfidf_vectorizer = pickle.load(open('tfidf_vectorizer.pkl', 'rb'))
+except FileNotFoundError:
+    print("TfidfVectorizer fayli topilmadi. Yaratilyapti...")
+    tfidf_vectorizer = TfidfVectorizer(max_features=10, ngram_range=(1, 1))
+    # Trening uchun namunaviy ma'lumotlar
+    training_data = ["This is a sample review", "Another review here"]
+    tfidf_vectorizer.fit(training_data)
+    pickle.dump(tfidf_vectorizer, open('tfidf_vectorizer.pkl', 'wb'))
+    print("TfidfVectorizer saqlandi!")
 
 @app.route('/')
 def home():
     return render_template('index.html')
-
 
 @app.route('/predict', methods=['POST'])
 def predict():
     '''
     For rendering results on HTML GUI
     '''
-    # Get inputs from the user
+    # Foydalanuvchidan kirishlarni olish
     star = request.form['star']
     review_text = request.form['text']
 
-    # Preprocessing: clean the review text
-    review_text = re.sub('[^a-zA-Z]', ' ', review_text)  # Remove non-alphabetic characters
-    review_text = review_text.lower().split()  # Convert to lower case and split into words
-    review_text = [ps.stem(word) for word in review_text if word not in stop_words]  # Remove stopwords and apply stemming
-    review_text = ' '.join(review_text)  # Join the cleaned words back into a string
+    # Preprocessing
+    ps = PorterStemmer()
+    review_text = re.sub('[^a-zA-Z]', ' ', review_text)
+    review_text = review_text.lower().split()
+    review_text = [ps.stem(word) for word in review_text if not word in stopwords.words('english')]
+    review_text = ' '.join(review_text)
 
-    # TF-IDF Vectorization: Use the pre-fitted vectorizer
-    review_features = tfidf_vectorizer.transform([review_text]).toarray()  # Use transform, not fit_transform
+    # TF-IDF vektorizatsiya
+    review_features = tfidf_vectorizer.transform([review_text]).toarray()
 
-    # Combine features (TF-IDF features + star rating)
+    # Xususiyatlar va starni birlashtirish
     features = np.hstack([review_features, np.array([[int(star)]]).reshape(1, -1)])
 
-    # Make prediction using the model
+    # Modelni prediktsiya qilish
     prediction = model.predict(features)
 
-    # Send the prediction result back to the HTML template
+    # Natijani yuborish
     return render_template('index.html', prediction_text=f'Predicted Rating: {prediction[0]}')
-
 
 if __name__ == "__main__":
     app.run(debug=True)
